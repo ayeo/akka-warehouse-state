@@ -6,10 +6,10 @@ import pl.ayeo.warehouse.ItemActor.{Create, Item}
 import spray.json.DefaultJsonProtocol
 
 trait ItemModelJsonProtocol extends DefaultJsonProtocol {
-  implicit val itemFormat = jsonFormat2(Item)
+  implicit val itemFormat = jsonFormat3(Item)
 }
 
-class ItemActor(val sku: String) extends Actor with ActorLogging with PersistentActor
+class ItemActor(val sku: String) extends Actor with ActorLogging with PersistentActor //todo: add warehouse id
 {
   import ItemActor._
 
@@ -45,7 +45,7 @@ class ItemActor(val sku: String) extends Actor with ActorLogging with Persistent
   }
 
   def initialized: Receive = {
-    case GetItem => sender() ! Some(Item(sku, locations.foldLeft(0) { case (a, (k, v)) => a + v }))
+    case GetItem => sender() ! Some(Item(sku, locations.foldLeft(0) { case (a, (k, v)) => a + v }, locations.toMap))
     case Create => {
       log.info("Item actor created")
       sender() ! ItemCreatingFailed("Already exists")
@@ -76,7 +76,7 @@ object ItemActor
   case class AddStock(location: Location, quantity: Quantity)
   case class RegisterLocation(location: Location)
 
-  case class Item(sku: SKU, quantity: Quantity)
+  case class Item(sku: SKU, totals: Quantity, locations: Map[Location, Quantity])
 
   case class ItemCreated(sku: String)
   case class ItemCreatingFailed(message: String)
