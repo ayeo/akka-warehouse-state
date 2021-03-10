@@ -6,12 +6,11 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityCont
 import akka.cluster.typed.Cluster
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
-import typed.MyPersistentBehavior.Attack
+import typed.Barbarian.Attack
 import akka.persistence.typed.scaladsl.Effect
 import typed.RootActor.Message
 
-object MyPersistentBehavior {
-
+object Barbarian {
   sealed trait Command
   case object Attack extends Command
 
@@ -19,15 +18,15 @@ object MyPersistentBehavior {
   case class Attacked(count: Int) extends Event
 
   final case class State(counter: Int = 0) {
-    def increase(amount: Int): State = State(counter + amount)
+    def increase(amount: Int = 1): State = State(counter + amount)
   }
 
-  val commandHandler: (EntityContext[Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = { (ex, context) =>
+  val commandHandler: (ActorContext[Command]) => (State, Command) => Effect[Event, State] = { (context) =>
     (state, command) =>
       command match {
         case Attack =>
-          context.log.info(s"${ex.entityId}: Attack counter: ${state.counter}")
-          Effect.persist(Attacked(state.counter + 1))
+          context.log.info(s"Attack counter: ${state.counter}")
+          Effect.persist(Attacked(state.increase().counter))
       }
   }
 
@@ -38,12 +37,12 @@ object MyPersistentBehavior {
       }
   }
 
-  def apply(ex: EntityContext[Command]): Behavior[Command] =
+  def apply(entityContext: EntityContext[Command]): Behavior[Command] =
     Behaviors.setup { context =>
       EventSourcedBehavior[Command, Event, State](
-        persistenceId = PersistenceId.ofUniqueId("abc"),
+        persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
         emptyState = State(),
-        commandHandler = commandHandler(ex, context),
+        commandHandler = commandHandler(context),
         eventHandler = eventHandler(context)
       )
     }
@@ -51,9 +50,7 @@ object MyPersistentBehavior {
 }
 
 object RootActor {
-
   sealed trait Message
-
   def apply(): Behavior[Message] = Behaviors.empty
 }
 
@@ -62,10 +59,10 @@ object TypedActor extends App {
   val cluster = Cluster(system)
   val sharding = ClusterSharding(system)
 
-  val TypeKey = EntityTypeKey[MyPersistentBehavior.Command]("Vitcim")
-  val shardRegion = sharding.init(Entity(TypeKey)(x => MyPersistentBehavior(x)))
+  val TypeKey = EntityTypeKey[Barbarian.Command]("Barbarian")
+  val shardRegion = sharding.init(Entity(TypeKey)(x => Barbarian(x)))
 
 
-  val a = sharding.entityRefFor(TypeKey, "bocian12-1")
+  val a = sharding.entityRefFor(TypeKey, "Gucio The Killa")
   a ! Attack
 }
