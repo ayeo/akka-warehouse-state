@@ -1,8 +1,7 @@
 package typed
 
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
-import akka.cluster.sharding.typed.ShardingEnvelope
+import akka.actor.typed.{ActorSystem, Behavior}
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityContext, EntityRef, EntityTypeKey}
 import akka.cluster.typed.Cluster
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
@@ -14,21 +13,20 @@ import typed.RootActor.Message
 object MyPersistentBehavior {
 
   sealed trait Command
-
   case object Attack extends Command
 
   sealed trait Event
-
   case class Attacked(count: Int) extends Event
 
-  final case class State(counter: Int = 0)
+  final case class State(counter: Int = 0) {
+    def increase(amount: Int): State = State(counter + amount)
+  }
 
   val commandHandler: (EntityContext[Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = { (ex, context) =>
     (state, command) =>
       command match {
         case Attack =>
-          context.log.info(ex.entityId)
-          context.log.info(s"Kurwa, kto jest miszcz? ${state.counter}")
+          context.log.info(s"${ex.entityId}: Attack counter: ${state.counter}")
           Effect.persist(Attacked(state.counter + 1))
       }
   }
@@ -36,21 +34,18 @@ object MyPersistentBehavior {
   val eventHandler: ActorContext[Command] => (State, Event) => State = { context =>
     (state, event) =>
       event match {
-        case Attacked(count) =>
-          //println(s"Attacked s{$context.id}")
-          State(count)
+        case Attacked(count) => State(count)
       }
   }
 
   def apply(ex: EntityContext[Command]): Behavior[Command] =
-    Behaviors.setup { context => {
+    Behaviors.setup { context =>
       EventSourcedBehavior[Command, Event, State](
         persistenceId = PersistenceId.ofUniqueId("abc"),
         emptyState = State(),
         commandHandler = commandHandler(ex, context),
         eventHandler = eventHandler(context)
       )
-    }
     }
 
 }
