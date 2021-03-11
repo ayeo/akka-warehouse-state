@@ -7,7 +7,7 @@ import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.Effect
 
-object Barbarian {
+object BarbarianActor {
   sealed trait Command
   case object Attack extends Command
 
@@ -15,7 +15,7 @@ object Barbarian {
   case class Attacked(count: Int) extends Event
 
   val name = "Barbarian"
-  val TypeKey = EntityTypeKey[Barbarian.Command]("Barbarian")
+  val TypeKey = EntityTypeKey[BarbarianActor.Command](name)
 
   final case class State(counter: Int = 0) {
     def increase(amount: Int = 1): State = State(counter + amount)
@@ -49,7 +49,7 @@ object Barbarian {
 
   def entityRef(implicit sharding: ClusterSharding): EntityRef[Command] = {
     //todo: do not init twice
-    sharding.init(Entity(Barbarian.TypeKey)(entityContext => Barbarian(entityContext)))
+    sharding.init(Entity(BarbarianActor.TypeKey)(entityContext => BarbarianActor(entityContext)))
     sharding.entityRefFor(TypeKey, name)
   }
 
