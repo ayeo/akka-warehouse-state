@@ -1,14 +1,11 @@
-package typed
+package pl.ayeo.typed
 
+import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorSystem, Behavior}
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityContext, EntityRef, EntityTypeKey}
-import akka.cluster.typed.Cluster
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
-import typed.Barbarian.Attack
 import akka.persistence.typed.scaladsl.Effect
-import typed.RootActor.Message
 
 object Barbarian {
   sealed trait Command
@@ -16,6 +13,9 @@ object Barbarian {
 
   sealed trait Event
   case class Attacked(count: Int) extends Event
+
+  val name = "Barbarian"
+  val TypeKey = EntityTypeKey[Barbarian.Command]("Barbarian")
 
   final case class State(counter: Int = 0) {
     def increase(amount: Int = 1): State = State(counter + amount)
@@ -47,22 +47,11 @@ object Barbarian {
       )
     }
 
+  def entityRef(implicit sharding: ClusterSharding): EntityRef[Command] = {
+    //todo: do not init twice
+    sharding.init(Entity(Barbarian.TypeKey)(entityContext => Barbarian(entityContext)))
+    sharding.entityRefFor(TypeKey, name)
+  }
+
 }
 
-object RootActor {
-  sealed trait Message
-  def apply(): Behavior[Message] = Behaviors.empty
-}
-
-object TypedActor extends App {
-  val system = ActorSystem[Message](RootActor(), "ClusterSystem")
-  val cluster = Cluster(system)
-  val sharding = ClusterSharding(system)
-
-  val TypeKey = EntityTypeKey[Barbarian.Command]("Barbarian")
-  val shardRegion = sharding.init(Entity(TypeKey)(x => Barbarian(x)))
-
-
-  val a = sharding.entityRefFor(TypeKey, "Gucio The Killa")
-  a ! Attack
-}
