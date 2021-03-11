@@ -6,7 +6,7 @@ import akka.cluster.sharding.typed.scaladsl.ClusterSharding
 import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
+import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.util.Timeout
 import akka.actor.typed.scaladsl.adapter._
@@ -41,7 +41,6 @@ object HttpServer extends App
             case Some(i: Item) => ToResponseMarshallable(i)
             case None => HttpResponse(StatusCodes.NotFound)
           }
-          //val response = HttpEntity(ContentTypes.`text/plain(UTF-8)`, "Bober")
           complete(response)
         }
     }
