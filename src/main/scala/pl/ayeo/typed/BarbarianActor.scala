@@ -47,10 +47,10 @@ object BarbarianActor {
       )
     }
 
-  def entityRef(implicit sharding: ClusterSharding): EntityRef[Command] = {
+  def entityRef(sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
     //todo: do not init twice
     sharding.init(Entity(BarbarianActor.TypeKey)(entityContext => BarbarianActor(entityContext)))
-    sharding.entityRefFor(TypeKey, name)
+    sharding.entityRefFor(TypeKey, sku)
   }
 
 }

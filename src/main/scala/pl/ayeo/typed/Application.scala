@@ -11,5 +11,5 @@ object Application extends App {
     val cluster = Cluster(system)
     implicit val sharding = ClusterSharding(system)
 
-    BarbarianActor.entityRef ! Attack
+    BarbarianActor.entityRef("1111") ! Attack
 }
