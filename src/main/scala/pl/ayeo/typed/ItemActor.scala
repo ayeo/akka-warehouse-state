@@ -1,21 +1,29 @@
 package pl.ayeo.typed
 
-import akka.actor.typed.Behavior
+import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityContext, EntityRef, EntityTypeKey}
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.Effect
+import spray.json.DefaultJsonProtocol
 
-object BarbarianActor {
+trait ItemModelJsonProtocol extends DefaultJsonProtocol {
+  implicit val itemFormat = jsonFormat3(Item)
+}
+
+case class Item(sku: SKU, totals: Quantity, locations: Map[Location, Quantity] = Map())
+
+object ItemActor {
   sealed trait Command
   case object Attack extends Command
+  case class Get(replyTo: ActorRef[Item]) extends Command
 
   sealed trait Event
   case class Attacked(count: Int) extends Event
 
   val name = "Barbarian"
-  val TypeKey = EntityTypeKey[BarbarianActor.Command](name)
+  val TypeKey = EntityTypeKey[ItemActor.Command](name)
 
   final case class State(counter: Int = 0) {
     def increase(amount: Int = 1): State = State(counter + amount)
@@ -27,6 +35,9 @@ object BarbarianActor {
         case Attack =>
           context.log.info(s"Attack counter: ${state.counter}")
           Effect.persist(Attacked(state.increase().counter))
+        case Get(replyTo) =>
+          replyTo ! Item("bober", 12)
+          Effect.none
       }
   }
 
@@ -47,9 +58,10 @@ object BarbarianActor {
       )
     }
 
+  def init(implicit sharding: ClusterSharding): Unit = //todo: make sure it is used
+    sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(entityContext)))
+
   def entityRef(sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
-    //todo: do not init twice
-    sharding.init(Entity(BarbarianActor.TypeKey)(entityContext => BarbarianActor(entityContext)))
     sharding.entityRefFor(TypeKey, sku)
   }
 

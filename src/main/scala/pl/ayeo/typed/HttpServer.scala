@@ -1,33 +1,35 @@
 package pl.ayeo.typed
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.typed.ActorSystem
+import akka.actor.typed.scaladsl.Behaviors
+import akka.cluster.sharding.typed.scaladsl.ClusterSharding
+import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
 import akka.http.scaladsl.server.Directives._
-import pl.ayeo.warehouse.ItemActor._
-import akka.pattern.ask
 import akka.util.Timeout
-
+import akka.actor.typed.scaladsl.adapter._
 import scala.concurrent.duration._
-import scala.concurrent.Future
 
 
 object HttpServer extends App
-  //with ItemModelJsonProtocol
+  with ItemModelJsonProtocol
   with SprayJsonSupport {
+
+  val system = ActorSystem[Nothing](Behaviors.empty, "ClusterSystem") //todo: get rid of name here
+  val cluster = Cluster(system)
+  implicit val sharding = ClusterSharding(system)
   implicit var timeout = Timeout(2.seconds)
-  implicit val system = ActorSystem("HighLevelExample")
+  implicit val classicSystem = system.toClassic
 
-  import system.dispatcher
-
-  //val itemAccess = system.actorOf(Props(new ItemAccess()))
+  ItemActor.init
 
   val routes = {
     path("item" / Segment) { sku: String =>
         get {
-//          val itemFuture = itemAccess ? ItemAccess.Pass(sku, ItemActor.GetItem)
+          val item = ItemActor.entityRef(sku)
+          val itemFuture = item ? ItemActor.Get
 //          val i: Future[Option[Item]] = itemFuture.mapTo[Option[Item]]
 //          val response: Future[ToResponseMarshallable] = i.map {
 //            case Some(i: Item) => ToResponseMarshallable(i)
@@ -39,5 +41,5 @@ object HttpServer extends App
     }
   }
 
-  Http().bindAndHandle(routes, "localhost", 8082)
+  Http().bindAndHandle(routes, "localhost", 8085)
 }
