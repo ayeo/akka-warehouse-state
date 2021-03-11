@@ -17,7 +17,7 @@ case class Item(sku: SKU, totals: Quantity, locations: Map[Location, Quantity] =
 object ItemActor {
   sealed trait Command
   case object Attack extends Command
-  case class Get(replyTo: ActorRef[Item]) extends Command
+  case class Get(replyTo: ActorRef[Option[Item]]) extends Command
 
   sealed trait Event
   case class Attacked(count: Int) extends Event
@@ -36,7 +36,7 @@ object ItemActor {
           context.log.info(s"Attack counter: ${state.counter}")
           Effect.persist(Attacked(state.increase().counter))
         case Get(replyTo) =>
-          replyTo ! Item("bober", 12)
+          replyTo ! Some(Item("bober", 12))
           Effect.none
       }
   }
