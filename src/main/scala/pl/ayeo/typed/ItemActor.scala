@@ -33,7 +33,7 @@ object ItemActor {
     (state, command) =>
       command match {
         case Attack =>
-          context.log.info(s"Attack counter: ${state.counter}")
+          //context.log.info(s"Attack counter: ${state.counter}")
           Effect.persist(Attacked(state.increase().counter))
         case Get(replyTo) =>
           replyTo ! Some(Item("bober", 12))
@@ -64,6 +64,4 @@ object ItemActor {
   def entityRef(sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
     sharding.entityRefFor(TypeKey, sku)
   }
-
 }
-
