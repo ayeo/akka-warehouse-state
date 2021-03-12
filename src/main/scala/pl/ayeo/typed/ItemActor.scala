@@ -6,6 +6,8 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityCont
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.Effect
+import pl.ayeo.typed.ItemAddLocationActor.Run
+import pl.ayeo.typed.WarehouseActor.LocationConfirmation
 import spray.json.DefaultJsonProtocol
 
 trait ItemModelJsonProtocol extends DefaultJsonProtocol {
@@ -16,44 +18,73 @@ case class Item(sku: SKU, totals: Quantity, locations: Map[Location, Quantity] =
 
 object ItemActor {
   sealed trait Command
-  case object Attack extends Command
   case class Get(replyTo: ActorRef[Option[Item]]) extends Command
+  case class StockIncrease(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
+  case class AddLocation(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
 
   sealed trait Event
-  case class Attacked(count: Int) extends Event
+  case class InvalidLocation(location: Location) extends Event
+  case class LocationAdded(location: Location) extends Event
+  case class StockUpdated(location: Location) extends Event
 
   val name = "Barbarian"
   val TypeKey = EntityTypeKey[ItemActor.Command](name)
 
-  final case class State(counter: Int = 0) {
-    def increase(amount: Int = 1): State = State(counter + amount)
+  final case class State(sku: SKU, warehouseID: WarehouseID, locations: List[Location] = Nil, counter: Int = 0) {
+    def increase(amount: Int = 1): State = State(sku, warehouseID, locations, counter + amount)
+
+    def addLocation(location: Location): State = State(sku, warehouseID, location :: locations, counter)
   }
 
-  val commandHandler: (ActorContext[Command]) => (State, Command) => Effect[Event, State] = { (context) =>
-    (state, command) =>
-      command match {
-        case Attack =>
-          //context.log.info(s"Attack counter: ${state.counter}")
-          Effect.persist(Attacked(state.increase().counter))
-        case Get(replyTo) =>
-          replyTo ! Some(Item("bober", 12))
-          Effect.none
-      }
+  val commandHandler: (ActorRef[WarehouseActor.Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = {
+    (warehouse, context) =>
+      (state, command) =>
+
+        command match {
+          case Get(replyTo) =>
+            replyTo ! Some(Item("bober", 12))
+            Effect.none
+          case StockIncrease(location, quantity, replyTo) => {
+            if (state.locations.contains(location)) {
+              println("Kozy kurwa srajo!")
+              replyTo ! StockUpdated(location)
+            } else {
+              context.spawn(ItemAddLocationActor(location, quantity, warehouse, context.self, replyTo), "KK")
+            }
+
+            Effect.none
+          }
+          case AddLocation(location, quantity, replyTo) => {
+            context.log.info("Location added")
+
+            val added = LocationAdded(location)
+            Effect.persist(added).thenRun(newState => {
+              replyTo ! added
+            })
+          }
+        }
   }
 
-  val eventHandler: ActorContext[Command] => (State, Event) => State = { context =>
-    (state, event) =>
-      event match {
-        case Attacked(count) => State(count)
+  val eventHandler: ActorContext[Command] => (State, Event) => State = {
+    context => {
+      (state, event) => event match {
+        case LocationAdded(location) => state.addLocation(location)
       }
+    }
   }
 
   def apply(entityContext: EntityContext[Command]): Behavior[Command] =
     Behaviors.setup { context =>
+      val split = entityContext.entityId.split("\\@")
+      val warehouseID: WarehouseID = split(0)
+      val sku: SKU = split(1)
+
+      val warehouse = context.spawn(WarehouseActor.commandHandler, "Warehius222t")
+
       EventSourcedBehavior[Command, Event, State](
         persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
-        emptyState = State(),
-        commandHandler = commandHandler(context),
+        emptyState = State(sku, warehouseID),
+        commandHandler = commandHandler(warehouse, context),
         eventHandler = eventHandler(context)
       )
     }
@@ -61,7 +92,8 @@ object ItemActor {
   def init(implicit sharding: ClusterSharding): Unit = //todo: make sure it is used
     sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(entityContext)))
 
-  def entityRef(sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
-    sharding.entityRefFor(TypeKey, sku)
+  def entityRef(warehouseID: WarehouseID, sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
+    val entityID = s"$warehouseID@$sku"
+    sharding.entityRefFor(TypeKey, entityID)
   }
 }
