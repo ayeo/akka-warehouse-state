@@ -4,7 +4,7 @@ version := "0.1"
 
 scalaVersion := "2.13.2"
 
-val AkkaVersion = "2.6.9"
+val AkkaVersion = "2.6.13"
 val AkkaHttpVersion = "10.2.4"
 libraryDependencies ++= Seq(
   "ch.qos.logback"    % "logback-classic" % "1.2.3",
