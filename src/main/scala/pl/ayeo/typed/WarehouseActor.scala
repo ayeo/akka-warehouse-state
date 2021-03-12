@@ -12,7 +12,7 @@ object WarehouseActor {
   case class LocationConfirmation(location: Location) extends Event
   case class UnknownLocation(location: Location) extends Event
 
-  case class WrappedBackendResponse(e: ItemActor.Event) extends Event
+  case class WrappedItemActorEvent(e: ItemActor.Event) extends Event
 
   final case class State(warehouseID: WarehouseID, locations: List[Location] = Nil)
 

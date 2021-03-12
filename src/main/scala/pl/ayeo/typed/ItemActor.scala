@@ -62,8 +62,8 @@ object ItemActor {
             replyTo ! Some(Item(state.warehouseID, state.sku, 12, state.locations.toMap))
             Effect.none
           case StockIncrease(location, quantity, replyTo) => {
+            context.log.info(s"[called] Stock Increase at $location by $quantity")
             if (state.locations.contains(location)) {
-              context.log.info(s"[called] Stock Increase at $location by $quantity")
               val event = StockUpdated(location, quantity);
               Effect.persist(event).thenRun(state => {
                 replyTo ! event

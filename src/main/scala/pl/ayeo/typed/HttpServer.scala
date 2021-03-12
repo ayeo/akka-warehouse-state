@@ -31,7 +31,7 @@ object HttpServer extends App
 
   val item = ItemActor.entityRef("23A", "13030-100-10")
 
-  val du = item.ask(ref => StockIncrease("12-LC-21", 11, ref))
+  val du = item.ask(ref => StockIncrease("12-LC-31", 11, ref))
   du.onComplete{
     case Success(value) => println(value)
     case Failure(exception) => println(exception)

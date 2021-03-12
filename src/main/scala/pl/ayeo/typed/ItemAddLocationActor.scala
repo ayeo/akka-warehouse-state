@@ -3,7 +3,7 @@ package pl.ayeo.typed
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}
 import pl.ayeo.typed.ItemActor.{AddLocation, InvalidLocation, LocationAdded, StockIncrease}
-import pl.ayeo.typed.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation, WrappedBackendResponse}
+import pl.ayeo.typed.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation, WrappedItemActorEvent}
 
 object ItemAddLocationActor {
 
@@ -19,7 +19,7 @@ object ItemAddLocationActor {
    requestSender: ActorRef[ItemActor.Event]
  ): Behavior[Event] = {
     Behaviors.setup { context =>
-      val backendResponseMapper: ActorRef[ItemActor.Event] = context.messageAdapter(rsp => WrappedBackendResponse(rsp))
+      val backendResponseMapper: ActorRef[ItemActor.Event] = context.messageAdapter(rsp => WrappedItemActorEvent(rsp))
       warehouseRef ! ConfirmLocation(location, context.self)
 
       def ready(quantity: Quantity): Behavior[Event] = Behaviors.receive {
@@ -31,7 +31,7 @@ object ItemAddLocationActor {
             case UnknownLocation(location: Location) =>
               requestSender ! InvalidLocation(location)
               Behaviors.stopped
-            case wrapped: WrappedBackendResponse => wrapped.e match {
+            case wrapped: WrappedItemActorEvent => wrapped.e match {
               case LocationAdded(location) =>
                 originalItem ! StockIncrease(location, quantity, requestSender)
                 Behaviors.stopped
