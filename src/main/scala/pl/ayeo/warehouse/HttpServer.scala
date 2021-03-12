@@ -11,6 +11,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.util.Timeout
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import pl.ayeo.warehouse.ItemActor.{Get, StockIncrease}
+import pl.ayeo.warehouse.WarehouseActor.RegisterLocation
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -28,6 +29,7 @@ object HttpServer extends App
   implicit val executionContext = system.dispatchers.lookup(DispatcherSelector.fromConfig("my-dispatcher"))
 
   ItemActor.init //todo: get rid of this
+  WarehouseActor.init
 
   val item = ItemActor.entityRef("23A", "13030-100-10")
 
@@ -36,6 +38,8 @@ object HttpServer extends App
     case Success(value) => println(value)
     case Failure(exception) => println(exception)
   }
+
+  WarehouseActor.entityRef("23A").ask(r => RegisterLocation("12-LC-31", r))
 
   val su = item.ask(ref => Get(ref))
   su.onComplete{

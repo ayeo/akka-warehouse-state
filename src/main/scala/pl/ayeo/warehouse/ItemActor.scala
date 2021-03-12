@@ -54,7 +54,7 @@ object ItemActor {
     }
   }
 
-  val commandHandler: (ActorRef[WarehouseActor.Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = {
+  val commandHandler: (EntityRef[WarehouseActor.Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = {
     (warehouse, context) =>
       (state, command) =>
         command match {
@@ -94,13 +94,13 @@ object ItemActor {
     }
   }
 
-  def apply(entityContext: EntityContext[Command]): Behavior[Command] =
+  def apply(sharding: ClusterSharding, entityContext: EntityContext[Command]): Behavior[Command] =
     Behaviors.setup { context =>
       val split = entityContext.entityId.split("\\@")
       val warehouseID: WarehouseID = split(0)
       val sku: SKU = split(1)
 
-      val warehouse = context.spawn(WarehouseActor.commandHandler, "Warehius222t")
+      val warehouse = WarehouseActor.entityRef(warehouseID)(sharding)
 
       EventSourcedBehavior[Command, Event, State](
         persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
@@ -111,7 +111,7 @@ object ItemActor {
     }
 
   def init(implicit sharding: ClusterSharding): Unit = //todo: make sure it is used
-    sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(entityContext)))
+    sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(sharding, entityContext)))
 
   def entityRef(warehouseID: WarehouseID, sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
     val entityID = s"$warehouseID@$sku"
