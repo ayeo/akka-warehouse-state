@@ -1,4 +1,4 @@
-package pl.ayeo.typed
+package pl.ayeo.warehouse
 
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}

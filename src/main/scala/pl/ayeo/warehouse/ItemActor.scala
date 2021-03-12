@@ -1,89 +1,120 @@
 package pl.ayeo.warehouse
 
-import akka.actor.{Actor, ActorLogging, Props}
-import akka.persistence.PersistentActor
-import pl.ayeo.warehouse.ItemActor.{Create, Item}
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityContext, EntityRef, EntityTypeKey}
+import akka.persistence.typed.scaladsl.EventSourcedBehavior
+import akka.persistence.typed.PersistenceId
+import akka.persistence.typed.scaladsl.Effect
 import spray.json.DefaultJsonProtocol
 
 trait ItemModelJsonProtocol extends DefaultJsonProtocol {
-  implicit val itemFormat = jsonFormat3(Item)
+  implicit val itemFormat = jsonFormat4(Item)
 }
 
-class ItemActor(val sku: String) extends Actor with ActorLogging with PersistentActor //todo: add warehouse id
-{
-  import ItemActor._
+case class Item(warehouseID: WarehouseID, sku: SKU, totals: Quantity, locations: Map[Location, Quantity] = Map())
 
-  var locations: scala.collection.mutable.Map[Location, Quantity] = scala.collection.mutable.Map()
+object ItemActor {
 
-  override def persistenceId: String = sku
+  sealed trait Command
 
-  override def receiveRecover: Receive = {
-    case ItemCreated(sku) => context.become(initialized)
-    case StockAdded(location, quantity) => {
-      if (locations.contains(location)) { //todo: ugly
-        locations(location) += quantity
-      } else {
-        locations(location) = quantity
-      }
+  case class Get(replyTo: ActorRef[Option[Item]]) extends Command
+
+  case class StockIncrease(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
+
+  case class AddLocation(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
+
+
+  sealed trait Event
+
+  case class InvalidLocation(location: Location) extends Event
+
+  case class LocationAdded(location: Location) extends Event
+
+  case class StockUpdated(location: Location, quantity: Quantity) extends Event
+
+  val name = "WarehouseItem"
+  val TypeKey = EntityTypeKey[ItemActor.Command](name)
+
+  final case class State(
+    sku: SKU,
+    warehouseID: WarehouseID,
+    locations: scala.collection.mutable.Map[Location, Quantity] = scala.collection.mutable.Map(),
+    counter: Int = 0
+  ) {
+    def increase(amount: Int = 1): State = State(sku, warehouseID, locations, counter + amount)
+
+    def addLocation(location: Location): State = {
+      State(sku, warehouseID, locations + (location -> 0), counter)
+    }
+
+    def addStock(location: Location, quantity: Quantity): State = {
+      locations(location) = locations(location) + quantity
+      State(sku, warehouseID, locations, counter)
     }
   }
 
-  override def receiveCommand: Receive = uninitialized
+  val commandHandler: (ActorRef[WarehouseActor.Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = {
+    (warehouse, context) =>
+      (state, command) =>
+        command match {
+          case Get(replyTo) =>
+            replyTo ! Some(Item(state.warehouseID, state.sku, 12, state.locations.toMap))
+            Effect.none
+          case StockIncrease(location, quantity, replyTo) => {
+            context.log.info(s"[called] Stock Increase at $location by $quantity")
+            if (state.locations.contains(location)) {
+              val event = StockUpdated(location, quantity);
+              Effect.persist(event).thenRun(state => {
+                replyTo ! event
+              })
+            } else {
+              context.spawn(ItemAddLocationActor(location, quantity, warehouse, context.self, replyTo), "IAL")
+              Effect.none
+            }
+          }
+          case AddLocation(location, quantity, replyTo) => {
+            context.log.info("Location added")
 
-  def uninitialized: Receive = {
-    case Create(sku) => {
-      val replyTo = sender()
-      persist(ItemCreated(sku)) { event =>
-        context.become(initialized)
-        replyTo ! ItemCreated(event.sku)
-      }
-    }
-    case a @ _ => {
-      log.info(s"Item actor not initialized $a")
-      sender() ! None
-    }
-  }
-
-  def initialized: Receive = {
-    case GetItem => sender() ! Some(Item(sku, locations.foldLeft(0) { case (a, (k, v)) => a + v }, locations.toMap))
-    case Create => {
-      log.info("Item actor created")
-      sender() ! ItemCreatingFailed("Already exists")
-    }
-    case AddStock(location, quantity) => {
-      if (locations.contains(location)) {
-        locations(location) = locations(location) + quantity
-        val replyTo = sender()
-        persist(StockAdded(location, quantity)) { event =>
-          replyTo ! event
+            val added = LocationAdded(location)
+            Effect.persist(added).thenRun(_ => {
+              replyTo ! added
+            })
+          }
         }
-      } else {
-        sender() ! UnknownLocation(location)
-      }
-    }
-    case RegisterLocation(location: Location) => {
-      //todo: check if exists
-      locations(location) = 0
-      sender() ! LocationRegistered(location)
+  }
+
+  val eventHandler: ActorContext[Command] => (State, Event) => State = {
+    context => {
+      (state, event) =>
+        event match {
+          case LocationAdded(location) => state.addLocation(location)
+          case StockUpdated(location, quantity) => state.addStock(location, quantity)
+        }
     }
   }
-}
 
-object ItemActor
-{
-  case object GetItem
-  case class Create(sku: String)
-  case class AddStock(location: Location, quantity: Quantity)
-  case class RegisterLocation(location: Location)
+  def apply(entityContext: EntityContext[Command]): Behavior[Command] =
+    Behaviors.setup { context =>
+      val split = entityContext.entityId.split("\\@")
+      val warehouseID: WarehouseID = split(0)
+      val sku: SKU = split(1)
 
-  case class Item(sku: SKU, totals: Quantity, locations: Map[Location, Quantity])
+      val warehouse = context.spawn(WarehouseActor.commandHandler, "Warehius222t")
 
-  case class ItemCreated(sku: String)
-  case class ItemCreatingFailed(message: String)
-  case class UnknownLocation(location: Location)
-  case class StockAdded(location: Location, quantity: Quantity)
-  case class LocationRegistered(location: Location)
+      EventSourcedBehavior[Command, Event, State](
+        persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
+        emptyState = State(sku, warehouseID),
+        commandHandler = commandHandler(warehouse, context),
+        eventHandler = eventHandler(context)
+      )
+    }
 
+  def init(implicit sharding: ClusterSharding): Unit = //todo: make sure it is used
+    sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(entityContext)))
 
-  def props(sku: String): Props = Props(new ItemActor(sku))
+  def entityRef(warehouseID: WarehouseID, sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
+    val entityID = s"$warehouseID@$sku"
+    sharding.entityRefFor(TypeKey, entityID)
+  }
 }

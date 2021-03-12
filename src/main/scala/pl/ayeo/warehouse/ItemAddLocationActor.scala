@@ -1,16 +1,11 @@
-package pl.ayeo.typed
+package pl.ayeo.warehouse
 
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior}
-import pl.ayeo.typed.ItemActor.{AddLocation, InvalidLocation, LocationAdded, StockIncrease}
-import pl.ayeo.typed.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation, WrappedItemActorEvent}
+import pl.ayeo.warehouse.ItemActor.{AddLocation, InvalidLocation, LocationAdded, StockIncrease}
+import pl.ayeo.warehouse.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation, WrappedItemActorEvent}
 
 object ItemAddLocationActor {
-
-  sealed trait Command
-
-  final case object Run extends Command
-
   def apply(
    location: Location,
    quantity: Quantity,
@@ -19,14 +14,14 @@ object ItemAddLocationActor {
    requestSender: ActorRef[ItemActor.Event]
  ): Behavior[Event] = {
     Behaviors.setup { context =>
-      val backendResponseMapper: ActorRef[ItemActor.Event] = context.messageAdapter(rsp => WrappedItemActorEvent(rsp))
+      val itemEventAdapter: ActorRef[ItemActor.Event] = context.messageAdapter(rsp => WrappedItemActorEvent(rsp))
       warehouseRef ! ConfirmLocation(location, context.self)
 
       def ready(quantity: Quantity): Behavior[Event] = Behaviors.receive {
         (context, message) =>
           message match {
             case LocationConfirmation(location) =>
-              originalItem ! AddLocation(location, quantity, backendResponseMapper)
+              originalItem ! AddLocation(location, quantity, itemEventAdapter)
               Behaviors.same
             case UnknownLocation(location: Location) =>
               requestSender ! InvalidLocation(location)

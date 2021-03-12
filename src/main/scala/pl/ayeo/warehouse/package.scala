@@ -7,5 +7,3 @@ package object warehouse {
   type WarehouseID = String
 }
 
-
-

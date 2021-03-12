@@ -1,66 +1,63 @@
 package pl.ayeo.warehouse
 
-import akka.actor.{ActorSystem, Props}
+import akka.actor.typed.{ActorRef, ActorSystem, DispatcherSelector}
+import akka.actor.typed.scaladsl.Behaviors
+import akka.cluster.sharding.typed.scaladsl.ClusterSharding
+import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
-import pl.ayeo.warehouse.ItemActor._
-import akka.pattern.ask
 import akka.util.Timeout
-import pl.ayeo.warehouse.StockUpdateActor.{StockUpdateFailed, StockUpdated}
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import pl.ayeo.warehouse.ItemActor.{Get, StockIncrease}
 
-import scala.concurrent.duration._
 import scala.concurrent.Future
+import scala.concurrent.duration._
+import scala.util.{Failure, Success}
 
 
 object HttpServer extends App
   with ItemModelJsonProtocol
   with SprayJsonSupport {
+
+  implicit val system = ActorSystem(Behaviors.empty, "ClusterSystem") //todo: get rid of name here
+  val cluster = Cluster(system)
+  implicit val sharding = ClusterSharding(system)
   implicit var timeout = Timeout(2.seconds)
-  implicit val system = ActorSystem("HighLevelExample")
+  implicit val executionContext = system.dispatchers.lookup(DispatcherSelector.fromConfig("my-dispatcher"))
 
-  import system.dispatcher
+  ItemActor.init //todo: get rid of this
 
-  val itemAccess = system.actorOf(Props(new ItemAccess()))
+  val item = ItemActor.entityRef("23A", "13030-100-10")
 
-  val routes = {
-    path("item" / Segment) { sku: String =>
-
-      post {
-        val resultFuture = itemAccess ? ItemAccess.Pass(sku, Create(sku))
-        val y = resultFuture.map {
-          case ItemCreated(sku) => HttpResponse(StatusCodes.OK)
-          case ItemCreatingFailed(message) => HttpResponse(StatusCodes.BadRequest)
-          case a@_ => {
-            print(a)
-            HttpResponse(StatusCodes.NotFound)
-          }
-        }
-        complete(y)
-      } ~
-        get {
-          val itemFuture = itemAccess ? ItemAccess.Pass(sku, ItemActor.GetItem)
-          val i: Future[Option[Item]] = itemFuture.mapTo[Option[Item]]
-          val response: Future[ToResponseMarshallable] = i.map {
-            case Some(i: Item) => ToResponseMarshallable(i)
-            case None => HttpResponse(StatusCodes.NotFound)
-          }
-          complete(response)
-        }
-    } ~
-      path("item" / Segment / "add" / IntNumber) { (sku, quantity) =>
-        val stockUpdater = system.actorOf(Props(new StockUpdateActor)) //todo: some child actor here
-        val result = stockUpdater ? StockUpdateActor.AddStock("bober", sku, quantity)
-        val response: Future[ToResponseMarshallable] = result.map {
-          case StockUpdated => HttpResponse(StatusCodes.OK)
-          case StockUpdateFailed => HttpResponse(StatusCodes.BadRequest)
-        }
-        complete(response)
-
-      }
+  val du = item.ask(ref => StockIncrease("12-LC-31", 11, ref))
+  du.onComplete{
+    case Success(value) => println(value)
+    case Failure(exception) => println(exception)
   }
 
-  Http().bindAndHandle(routes, "localhost", 8082)
+  val su = item.ask(ref => Get(ref))
+  su.onComplete{
+    case Success(value) => println(value)
+    case Failure(exception) => println(exception)
+  }
+
+
+//  val routes = {
+//    path("item" / Segment) { sku: String =>
+//        get {
+//          val item = ItemActor.entityRef("23", sku)
+//          val itemFuture = item ? ItemActor.Get
+//          val i: Future[Option[Item]] = itemFuture.mapTo[Option[Item]]
+//          val response: Future[ToResponseMarshallable] = i.map {
+//            case Some(i: Item) => ToResponseMarshallable(i)
+//            case None => HttpResponse(StatusCodes.NotFound)
+//          }
+//          complete(response)
+//        }
+//    }
+//  }
+
+  //Http().newServerAt("localhost", 8085).bind(routes)
 }
