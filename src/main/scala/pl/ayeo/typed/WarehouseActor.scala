@@ -19,7 +19,7 @@ object WarehouseActor {
   val commandHandler: Behavior[Command] = Behaviors.receive { (context, command) =>
         command match {
           case ConfirmLocation(location, replyTo) => {
-            context.log.info("Szpaki ruchają bociany")
+            context.log.info(s"[called] WarehouseActor::ConfirmLocation $location")
             replyTo ! LocationConfirmation(location)
             Behaviors.same
           }
