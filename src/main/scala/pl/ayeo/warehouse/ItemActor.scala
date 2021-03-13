@@ -19,12 +19,12 @@ object ItemActor {
 
   sealed trait Command
   case class Get(replyTo: ActorRef[Option[Item]]) extends Command
-  case class StockIncrease(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
+  case class AddStock(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
   private case class AddLocation(location: Location, replyTo: ActorRef[Event]) extends Command
 
   sealed trait Event
   case class InvalidLocation(location: Location) extends Event
-  case class LocationAdded(location: Location) extends Event
+  private case class LocationAdded(location: Location) extends Event
   case class StockUpdated(location: Location, quantity: Quantity) extends Event
 
   val name = "WarehouseItem"
@@ -55,8 +55,7 @@ object ItemActor {
           case Get(replyTo) =>
             replyTo ! Some(Item(state.warehouseID, state.sku, 12, state.locations.toMap))
             Effect.none
-          case StockIncrease(location, quantity, replyTo) => {
-            context.log.info(s"[called] Stock Increase at $location by $quantity")
+          case AddStock(location, quantity, replyTo) => {
             if (state.locations.contains(location)) {
               val event = StockUpdated(location, quantity);
               Effect.persist(event).thenRun(state => {
@@ -68,8 +67,6 @@ object ItemActor {
             }
           }
           case AddLocation(location, replyTo) => {
-            context.log.info("Location added")
-
             val added = LocationAdded(location)
             Effect.persist(added).thenRun(_ => {
               replyTo ! added
@@ -129,7 +126,7 @@ object ItemActor {
                 requestSender ! InvalidLocation(location)
                 Behaviors.stopped
               case LocationAdded(location) =>
-                originalItem ! StockIncrease(location, quantity, requestSender)
+                originalItem ! AddStock(location, quantity, requestSender)
                 Behaviors.stopped
             }
         }

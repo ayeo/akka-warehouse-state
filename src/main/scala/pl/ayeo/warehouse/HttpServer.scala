@@ -10,7 +10,7 @@ import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.util.Timeout
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import pl.ayeo.warehouse.ItemActor.{Get, StockIncrease}
+import pl.ayeo.warehouse.ItemActor.{Get, AddStock}
 import pl.ayeo.warehouse.WarehouseActor.RegisterLocation
 
 import scala.concurrent.Future
@@ -33,7 +33,7 @@ object HttpServer extends App
 
   val item = ItemActor.entityRef("23A", "13030-100-10")
 
-  val du = item.ask(ref => StockIncrease("bolek2", 100, ref))
+  val du = item.ask(ref => AddStock("bolek2", 100, ref))
   du.onComplete{
     case Success(value) => println(value)
     case Failure(exception) => println(exception)
