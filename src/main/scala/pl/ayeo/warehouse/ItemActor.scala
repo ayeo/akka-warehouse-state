@@ -6,6 +6,7 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityCont
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.Effect
+import pl.ayeo.warehouse.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation, WrappedItemActorEvent}
 import spray.json.DefaultJsonProtocol
 
 trait ItemModelJsonProtocol extends DefaultJsonProtocol {
@@ -17,20 +18,13 @@ case class Item(warehouseID: WarehouseID, sku: SKU, totals: Quantity, locations:
 object ItemActor {
 
   sealed trait Command
-
   case class Get(replyTo: ActorRef[Option[Item]]) extends Command
-
   case class StockIncrease(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
-
-  case class AddLocation(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
-
+  private case class AddLocation(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
 
   sealed trait Event
-
   case class InvalidLocation(location: Location) extends Event
-
   case class LocationAdded(location: Location) extends Event
-
   case class StockUpdated(location: Location, quantity: Quantity) extends Event
 
   val name = "WarehouseItem"
@@ -116,5 +110,35 @@ object ItemActor {
   def entityRef(warehouseID: WarehouseID, sku: String)(implicit sharding: ClusterSharding): EntityRef[Command] = {
     val entityID = s"$warehouseID@$sku"
     sharding.entityRefFor(TypeKey, entityID)
+  }
+
+  object ItemAddLocationActor {
+    def apply(
+     location: Location,
+     quantity: Quantity,
+     warehouseRef: EntityRef[WarehouseActor.Command],
+     originalItem: ActorRef[ItemActor.Command],
+     requestSender: ActorRef[ItemActor.Event]
+   ): Behavior[Any] = {
+      Behaviors.setup { context =>
+        warehouseRef ! ConfirmLocation(location, context.self)
+        def ready(quantity: Quantity): Behavior[Any] = Behaviors.receive {
+          (context, message) =>
+            message match {
+              case LocationConfirmation(location) =>
+                originalItem ! AddLocation(location, quantity, context.self)
+                Behaviors.same
+              case UnknownLocation(location: Location) =>
+                requestSender ! InvalidLocation(location)
+                Behaviors.stopped
+              case LocationAdded(location) =>
+                originalItem ! StockIncrease(location, quantity, requestSender)
+                Behaviors.stopped
+            }
+        }
+
+        ready(quantity)
+      }
+    }
   }
 }

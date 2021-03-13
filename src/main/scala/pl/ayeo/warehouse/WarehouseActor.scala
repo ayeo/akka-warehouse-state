@@ -15,7 +15,7 @@ object WarehouseActor {
   case class LocationAdded(location: Location) extends Event
   case class LocationConfirmation(location: Location) extends Event
   case class UnknownLocation(location: Location) extends Event
-  case class WrappedItemActorEvent(e: ItemActor.Event) extends Event
+  //case class WrappedItemActorEvent(e: ItemActor.Event) extends Event
 
   final case class State(warehouseID: WarehouseID, locations: List[Location] = Nil) {
     def addLocation(location: Location): State = {
@@ -27,8 +27,12 @@ object WarehouseActor {
   val commandHandler: (State, Command) => Effect[Event, State] = { (state, command) =>
     command match {
         case ConfirmLocation(location, replyTo) => {
-          if (!location.contains(location)) replyTo ! UnknownLocation(location)
-          else replyTo ! LocationConfirmation(location)
+          val bool = !state.locations.contains(location)
+          if (bool) {
+            replyTo ! UnknownLocation(location)
+          } else {
+            replyTo ! LocationConfirmation(location)
+          }
           Effect.none
         }
         case RegisterLocation(location: Location, replyTo) => {
