@@ -20,7 +20,7 @@ object ItemActor {
   sealed trait Command
   case class Get(replyTo: ActorRef[Option[Item]]) extends Command
   case class StockIncrease(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
-  private case class AddLocation(location: Location, quantity: Quantity, replyTo: ActorRef[Event]) extends Command
+  private case class AddLocation(location: Location, replyTo: ActorRef[Event]) extends Command
 
   sealed trait Event
   case class InvalidLocation(location: Location) extends Event
@@ -63,11 +63,11 @@ object ItemActor {
                 replyTo ! event
               })
             } else {
-              context.spawn(addLocation(location, quantity, warehouse, context.self, replyTo), "IAL")
+              context.spawn(addLocationProcess(location, quantity, warehouse, context.self, replyTo), "IAL")
               Effect.none
             }
           }
-          case AddLocation(location, quantity, replyTo) => {
+          case AddLocation(location, replyTo) => {
             context.log.info("Location added")
 
             val added = LocationAdded(location)
@@ -78,13 +78,11 @@ object ItemActor {
         }
   }
 
-  val eventHandler: ActorContext[Command] => (State, Event) => State = {
-    context => {
-      (state, event) =>
-        event match {
-          case LocationAdded(location) => state.addLocation(location)
-          case StockUpdated(location, quantity) => state.addStock(location, quantity)
-        }
+  val eventHandler: (State, Event) => State = {
+    (state, event) =>
+      event match {
+        case LocationAdded(location) => state.addLocation(location)
+        case StockUpdated(location, quantity) => state.addStock(location, quantity)
     }
   }
 
@@ -100,7 +98,7 @@ object ItemActor {
         persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
         emptyState = State(sku, warehouseID),
         commandHandler = commandHandler(warehouse, context),
-        eventHandler = eventHandler(context)
+        eventHandler = eventHandler
       )
     }
 
@@ -112,7 +110,7 @@ object ItemActor {
     sharding.entityRefFor(TypeKey, entityID)
   }
 
-  def addLocation(
+  private def addLocationProcess(
      location: Location,
      quantity: Quantity,
      warehouseRef: EntityRef[WarehouseActor.Command],
@@ -125,7 +123,7 @@ object ItemActor {
           (context, message) =>
             message match {
               case LocationConfirmation(location) =>
-                originalItem ! AddLocation(location, quantity, context.self)
+                originalItem ! AddLocation(location, context.self)
                 Behaviors.same
               case UnknownLocation(location: Location) =>
                 requestSender ! InvalidLocation(location)
