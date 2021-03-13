@@ -33,13 +33,13 @@ object HttpServer extends App
 
   val item = ItemActor.entityRef("23A", "13030-100-10")
 
-  val du = item.ask(ref => StockIncrease("lc-12-01", 11, ref))
+  val du = item.ask(ref => StockIncrease("bolek2", 100, ref))
   du.onComplete{
     case Success(value) => println(value)
     case Failure(exception) => println(exception)
   }
 
-  //WarehouseActor.entityRef("23A").ask(r => RegisterLocation("lc-12-01", r))
+  //WarehouseActor.entityRef("23A").ask(r => RegisterLocation("bolek2", r))
 
   val su = item.ask(ref => Get(ref))
   su.onComplete{

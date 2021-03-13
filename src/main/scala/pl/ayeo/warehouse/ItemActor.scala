@@ -6,7 +6,7 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityCont
 import akka.persistence.typed.scaladsl.EventSourcedBehavior
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.Effect
-import pl.ayeo.warehouse.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation, WrappedItemActorEvent}
+import pl.ayeo.warehouse.WarehouseActor.{ConfirmLocation, Event, LocationConfirmation, UnknownLocation}
 import spray.json.DefaultJsonProtocol
 
 trait ItemModelJsonProtocol extends DefaultJsonProtocol {
@@ -63,7 +63,7 @@ object ItemActor {
                 replyTo ! event
               })
             } else {
-              context.spawn(ItemAddLocationActor(location, quantity, warehouse, context.self, replyTo), "IAL")
+              context.spawn(addLocation(location, quantity, warehouse, context.self, replyTo), "IAL")
               Effect.none
             }
           }
@@ -112,8 +112,7 @@ object ItemActor {
     sharding.entityRefFor(TypeKey, entityID)
   }
 
-  object ItemAddLocationActor {
-    def apply(
+  def addLocation(
      location: Location,
      quantity: Quantity,
      warehouseRef: EntityRef[WarehouseActor.Command],
@@ -139,6 +138,5 @@ object ItemActor {
 
         ready(quantity)
       }
-    }
   }
 }
