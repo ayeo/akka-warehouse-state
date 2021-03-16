@@ -61,7 +61,7 @@ object WarehouseActor {
       )
     }
 
-  def init(implicit sharding: ClusterSharding): Unit = //todo: make sure it is used
+  def init(implicit sharding: ClusterSharding): Unit = //todo: make sure it is called before entityRef
     sharding.init(Entity(WarehouseActor.TypeKey)(entityContext => WarehouseActor(sharding, entityContext)))
 
   def entityRef(warehouseID: WarehouseID)(implicit sharding: ClusterSharding): EntityRef[WarehouseActor.Command] = {
