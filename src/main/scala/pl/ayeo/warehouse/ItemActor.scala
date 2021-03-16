@@ -30,58 +30,81 @@ object ItemActor {
   val name = "WarehouseItem"
   val TypeKey = EntityTypeKey[ItemActor.Command](name)
 
-  final case class State(
+  sealed trait State {
+    def addLocation(location: Location): State
+    def addStock(location: Location, quantity: Quantity): State
+
+    def applyCommand(
+      warehouse: EntityRef[WarehouseActor.Command],
+      context: ActorContext[Command],
+      command: Command
+    ): Effect[Event, State]
+  }
+
+  final case class Uninitialized(sku: SKU, warehouseID: WarehouseID) extends State {
+    override def addLocation(location: Location): State = this
+    override def addStock(location: Location, quantity: Quantity): State = this
+
+    override def applyCommand(
+     warehouse: EntityRef[WarehouseActor.Command],
+     context: ActorContext[Command],
+     command: Command
+   ): Effect[Event, State] = Effect.none
+  }
+
+  final case class Initialized(
     sku: SKU,
     warehouseID: WarehouseID,
     locations: scala.collection.mutable.Map[Location, Quantity] = scala.collection.mutable.Map(),
     counter: Int = 0
-  ) {
-    def increase(amount: Int = 1): State = State(sku, warehouseID, locations, counter + amount)
+  ) extends State {
+    def increase(amount: Int = 1): Initialized = Initialized(sku, warehouseID, locations, counter + amount)
 
     def addLocation(location: Location): State = {
-      State(sku, warehouseID, locations + (location -> 0), counter)
+      Initialized(sku, warehouseID, locations + (location -> 0), counter)
     }
 
     def addStock(location: Location, quantity: Quantity): State = {
       locations(location) = locations(location) + quantity
-      State(sku, warehouseID, locations, counter)
+      Initialized(sku, warehouseID, locations, counter)
     }
-  }
 
-  val commandHandler: (EntityRef[WarehouseActor.Command], ActorContext[Command]) => (State, Command) => Effect[Event, State] = {
-    (warehouse, context) =>
-      (state, command) =>
-        command match {
-          case Get(replyTo) =>
-            replyTo ! Some(Item(state.warehouseID, state.sku, 12, state.locations.toMap))
-            Effect.none
-          case AddStock(location, quantity, replyTo) => {
-            context.log.info("Add stock ")
-            if (state.locations.contains(location)) {
-              val event = StockUpdated(location, quantity);
-              Effect.persist(event).thenRun(state => {
-                replyTo ! event
-              })
-            } else {
-              context.spawn(addLocationProcess(location, quantity, warehouse, context.self, replyTo), "IAL")
-              Effect.none
-            }
-          }
-          case AddLocation(location, replyTo) => {
-            val added = LocationAdded(location)
-            Effect.persist(added).thenRun(_ => {
-              replyTo ! added
-            })
-          }
+    override def applyCommand(
+     warehouse: EntityRef[WarehouseActor.Command],
+     context: ActorContext[Command],
+     command: Command
+   ): Effect[Event, State] = command match {
+      case Get(replyTo) =>
+        replyTo ! Some(Item(warehouseID, sku, 12, locations.toMap))
+        Effect.none
+      case AddStock(location, quantity, replyTo) => {
+        context.log.info("Add stock ")
+        if (locations.contains(location)) {
+          val event = StockUpdated(location, quantity);
+          Effect.persist(event).thenRun(state => {
+            replyTo ! event
+          })
+        } else {
+          context.spawn(addLocationProcess(location, quantity, warehouse, context.self, replyTo), "IAL")
+          Effect.none
         }
+      }
+      case AddLocation(location, replyTo) => {
+        val added = LocationAdded(location)
+        Effect.persist(added).thenRun(_ => {
+          replyTo ! added
+        })
+      }
+    }
   }
 
   val eventHandler: (State, Event) => State = {
     (state, event) =>
-      event match {
-        case LocationAdded(location) => state.addLocation(location)
-        case StockUpdated(location, quantity) => state.addStock(location, quantity)
-    }
+      println("kutas")
+        event match {
+          case LocationAdded(location) => state.addLocation(location)
+          case StockUpdated(location, quantity) => state.addStock(location, quantity)
+        }
   }
 
   def apply(sharding: ClusterSharding, entityContext: EntityContext[Command]): Behavior[Command] =
@@ -94,8 +117,8 @@ object ItemActor {
 
       EventSourcedBehavior[Command, Event, State](
         persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
-        emptyState = State(sku, warehouseID),
-        commandHandler = commandHandler(warehouse, context),
+        emptyState = Uninitialized(sku, warehouseID),
+        (state, cmd) => state.applyCommand(warehouse, context, cmd),
         eventHandler = eventHandler
       )
     }

@@ -28,9 +28,12 @@ object HttpServer extends App
   implicit var timeout = Timeout(2.seconds)
   implicit val executionContext = system.dispatchers.lookup(DispatcherSelector.fromConfig("my-dispatcher"))
 
+
   ItemActor.init //todo: get rid of this
   WarehouseActor.init
 
+  val warehouse = WarehouseActor.entityRef(("23A"))
+  warehouse ! RegisterLocation("bolek2", system.ignoreRef)
   val item = ItemActor.entityRef("23A", "13030-100-10")
 
   val du = item.ask(ref => AddStock("bolek2", 100, ref))
