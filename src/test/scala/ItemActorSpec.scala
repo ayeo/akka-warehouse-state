@@ -5,9 +5,11 @@ import com.typesafe.config.ConfigFactory
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.wordspec.AnyWordSpecLike
 import akka.persistence.testkit.scaladsl.{EventSourcedBehaviorTestKit, PersistenceTestKit}
-import pl.ayeo.warehouse.ItemActor.AddStock
+import pl.ayeo.warehouse.ItemActor.{AddStock, Create}
 import pl.ayeo.warehouse.WarehouseActor.RegisterLocation
 import pl.ayeo.warehouse.{ItemActor, WarehouseActor}
+
+import java.util.UUID
 
 class ItemActorSpec
   extends ScalaTestWithActorTestKit(EventSourcedBehaviorTestKit.config.withFallback(
@@ -32,9 +34,23 @@ class ItemActorSpec
   }
 
   "Item" must {
+    "reject adding stock to uninitialized" in {
+      val probe = testKit.createTestProbe[ItemActor.Event]()
+      ItemActor.entityRef(UUID.randomUUID().toString) ! AddStock("LC-10", 10, probe.ref)
+      probe.expectMessage(ItemActor.NotInitialized)
+    }
+
+    "allow to create" in {
+      val probe = testKit.createTestProbe[ItemActor.Event]()
+      ItemActor.entityRef(UUID.randomUUID().toString) ! Create("LC-10", "130-01-00", probe.ref)
+      probe.expectMessage(ItemActor.Created("LC-10", "130-01-00"))
+    }
+
     "reject adding stock to unknown location" in {
       val probe = testKit.createTestProbe[ItemActor.Event]()
-      ItemActor.entityRef("23", "100-10") ! AddStock("LC-10", 10, probe.ref)
+      val item = ItemActor.entityRef(UUID.randomUUID().toString)
+      item ! Create("LC-10", "130-01-00", testKit.system.ignoreRef)
+      item ! AddStock("LC-10", 10, probe.ref)
       probe.expectMessage(ItemActor.InvalidLocation("LC-10"))
     }
 
@@ -42,7 +58,7 @@ class ItemActorSpec
       WarehouseActor.entityRef("23") ! RegisterLocation("LC-10", testKit.system.ignoreRef)
 
       val probe = testKit.createTestProbe[ItemActor.Event]()
-      ItemActor.entityRef("23", "100-10") ! AddStock("LC-10", 10, probe.ref)
+      ItemActor.entityRef(UUID.randomUUID().toString) ! AddStock("LC-10", 10, probe.ref)
       probe.expectMessage(ItemActor.StockUpdated("LC-10", 10))
     }
   }

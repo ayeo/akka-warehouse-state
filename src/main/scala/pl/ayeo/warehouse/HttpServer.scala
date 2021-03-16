@@ -10,13 +10,13 @@ import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.util.Timeout
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import pl.ayeo.warehouse.ItemActor.{Get, AddStock}
+import pl.ayeo.warehouse.ItemActor.{AddStock, Create, Get}
 import pl.ayeo.warehouse.WarehouseActor.RegisterLocation
 
+import java.util.UUID
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
-
 
 object HttpServer extends App
   with ItemModelJsonProtocol
@@ -29,27 +29,8 @@ object HttpServer extends App
   implicit val executionContext = system.dispatchers.lookup(DispatcherSelector.fromConfig("my-dispatcher"))
 
 
-  ItemActor.init //todo: get rid of this
+  ItemActor.init
   WarehouseActor.init
-
-  val warehouse = WarehouseActor.entityRef(("23A"))
-  warehouse ! RegisterLocation("bolek2", system.ignoreRef)
-  val item = ItemActor.entityRef("23A", "13030-100-10")
-
-  val du = item.ask(ref => AddStock("bolek2", 100, ref))
-  du.onComplete{
-    case Success(value) => println(value)
-    case Failure(exception) => println(exception)
-  }
-
-  //WarehouseActor.entityRef("23A").ask(r => RegisterLocation("bolek2", r))
-
-  val su = item.ask(ref => Get(ref))
-  su.onComplete{
-    case Success(value) => println(value)
-    case Failure(exception) => println(exception)
-  }
-
 
 //  val routes = {
 //    path("item" / Segment) { sku: String =>
@@ -65,6 +46,5 @@ object HttpServer extends App
 //        }
 //    }
 //  }
-
-  //Http().newServerAt("localhost", 8085).bind(routes)
+//  Http().newServerAt("localhost", 8085).bind(routes)
 }
