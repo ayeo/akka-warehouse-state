@@ -34,8 +34,8 @@ final case object Uninitialized extends State {
   }
 
   def applyEvent(event: Event): State = event match {
-        case Created(warehouseID, sku) => Initialized(sku, warehouseID)
-      }
+    case Created(warehouseID, sku) => Initialized(sku, warehouseID)
+  }
 }
 
 final case class Initialized(
@@ -51,9 +51,9 @@ final case class Initialized(
   }
 
   override def applyEvent(event: Event): State = event match {
-      case LocationAdded(location) => addLocation(location)
-      case StockUpdated(location, quantity) => addStock(location, quantity)
-    }
+    case LocationAdded(location) => addLocation(location)
+    case StockUpdated(location, quantity) => addStock(location, quantity)
+  }
 
   override def applyCommand(
    implicit clusterSharding: ClusterSharding, //todo: ugly sharding - hard to test
@@ -67,9 +67,7 @@ final case class Initialized(
       context.log.info("Add stock ")
       if (locations.contains(location)) {
         val event = StockUpdated(location, quantity);
-        Effect.persist(event).thenRun(state => {
-          replyTo ! event
-        })
+        Effect.persist(event).thenRun(_ => replyTo ! event)
       } else {
         val warehouse = WarehouseActor.entityRef(warehouseID)
         context.spawn(addLocationProcess(location, quantity, warehouse, context.self, replyTo), "IAL")
@@ -78,9 +76,7 @@ final case class Initialized(
     }
     case AddLocation(location, replyTo) => {
       val added = LocationAdded(location)
-      Effect.persist(added).thenRun(_ => {
-        replyTo ! added
-      })
+      Effect.persist(added).thenRun(_ => replyTo ! added)
     }
     case Create(warehouseID, sku, replyTo: ActorRef[Event]) => {
       replyTo ! AlreadyInitialized(warehouseID, sku)
