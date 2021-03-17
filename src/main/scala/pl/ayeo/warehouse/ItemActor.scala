@@ -32,7 +32,6 @@ object ItemActor {
   val name = "WarehouseItem"
   val TypeKey = EntityTypeKey[ItemActor.Command](name)
 
-
   def apply(sharding: ClusterSharding, entityContext: EntityContext[Command]): Behavior[Command] =
     Behaviors.setup { context =>
       EventSourcedBehavior[Command, Event, State](
