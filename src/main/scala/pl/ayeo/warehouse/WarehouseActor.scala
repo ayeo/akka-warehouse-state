@@ -43,7 +43,9 @@ object WarehouseActor {
 
   val eventHandler: (State, Event) => State = {
       (state, event) => { event match {
-        case LocationAdded(location) => state.addLocation(location)
+        case LocationAdded(location) =>
+          val n = state.addLocation(location)
+          n
       }
     }
   }

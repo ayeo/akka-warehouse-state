@@ -34,7 +34,7 @@ final case object Uninitialized extends State {
   }
 
   def applyEvent(event: Event): State = event match {
-        case Created(warehouseID, sku) => Initialized(warehouseID, sku)
+        case Created(warehouseID, sku) => Initialized(sku, warehouseID)
       }
 }
 
@@ -44,7 +44,7 @@ final case class Initialized(
   locations: scala.collection.mutable.Map[Location, Quantity] = scala.collection.mutable.Map(), //todo: make me immutable
   counter: Int = 0
 ) extends State {
-  def addLocation(location: Location): State = Initialized(sku, warehouseID, locations + (location ->`` 0), counter)
+  def addLocation(location: Location): State = Initialized(sku, warehouseID, locations + (location -> 0), counter)
   def addStock(location: Location, quantity: Quantity): State = {
     locations(location) = locations(location) + quantity
     Initialized(sku, warehouseID, locations, counter)

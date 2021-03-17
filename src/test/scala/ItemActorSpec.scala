@@ -49,16 +49,17 @@ class ItemActorSpec
     "reject adding stock to unknown location" in {
       val probe = testKit.createTestProbe[ItemActor.Event]()
       val item = ItemActor.entityRef(UUID.randomUUID().toString)
-      item ! Create("LC-10", "130-01-00", testKit.system.ignoreRef)
+      item ! Create("23", "130-01-00", testKit.system.ignoreRef)
       item ! AddStock("LC-10", 10, probe.ref)
       probe.expectMessage(ItemActor.InvalidLocation("LC-10"))
     }
 
     "update stock on valid location" in {
       WarehouseActor.entityRef("23") ! RegisterLocation("LC-10", testKit.system.ignoreRef)
-
       val probe = testKit.createTestProbe[ItemActor.Event]()
-      ItemActor.entityRef(UUID.randomUUID().toString) ! AddStock("LC-10", 10, probe.ref)
+      val item = ItemActor.entityRef(UUID.randomUUID().toString)
+      item ! Create("23", "130-01-00", testKit.system.ignoreRef)
+      item ! AddStock("LC-10", 10, probe.ref)
       probe.expectMessage(ItemActor.StockUpdated("LC-10", 10))
     }
   }
