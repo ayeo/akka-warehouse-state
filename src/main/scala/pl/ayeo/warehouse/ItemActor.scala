@@ -32,18 +32,24 @@ object ItemActor {
   val name = "WarehouseItem"
   val TypeKey = EntityTypeKey[ItemActor.Command](name)
 
-  def apply(sharding: ClusterSharding, entityContext: EntityContext[Command]): Behavior[Command] =
+  def apply(
+    implicit warehouseAccess: WarehouseID => EntityRef[WarehouseActor.Command],
+    entityContext: EntityContext[Command]
+  ): Behavior[Command] =
     Behaviors.setup { context =>
       EventSourcedBehavior[Command, Event, State](
         persistenceId = PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId),
         emptyState = Uninitialized,
-        (state, cmd) => state.applyCommand(sharding, context, cmd),
+        (state, cmd) => state.applyCommand(context, cmd),
         (state, event) => state.applyEvent(event)
       )
     }
 
-  def init(implicit sharding: ClusterSharding): Unit =
-    sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(sharding, entityContext)))
+  def init
+    (warehouseAccess: WarehouseID => EntityRef[WarehouseActor.Command])
+    (implicit sharding: ClusterSharding)
+    : Unit =
+      sharding.init(Entity(ItemActor.TypeKey)(entityContext => ItemActor(warehouseAccess, entityContext)))
 
   def entityRef(entityId: EntityId)(implicit sharding: ClusterSharding): EntityRef[Command] = {
     sharding.entityRefFor(TypeKey, entityId)

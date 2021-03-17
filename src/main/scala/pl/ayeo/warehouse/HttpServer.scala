@@ -2,7 +2,7 @@ package pl.ayeo.warehouse
 
 import akka.actor.typed.{ActorRef, ActorSystem, DispatcherSelector}
 import akka.actor.typed.scaladsl.Behaviors
-import akka.cluster.sharding.typed.scaladsl.ClusterSharding
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, EntityRef}
 import akka.cluster.typed.Cluster
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
@@ -28,8 +28,11 @@ object HttpServer extends App
   implicit var timeout = Timeout(2.seconds)
   implicit val executionContext = system.dispatchers.lookup(DispatcherSelector.fromConfig("my-dispatcher"))
 
+  def warehouseAccess(implicit sharding: ClusterSharding): WarehouseID => EntityRef[WarehouseActor.Command] = {
+    warehouseId => WarehouseActor.entityRef(warehouseId)
+  }
 
-  ItemActor.init
+  ItemActor.init(warehouseAccess)
   WarehouseActor.init
 
 //  val routes = {

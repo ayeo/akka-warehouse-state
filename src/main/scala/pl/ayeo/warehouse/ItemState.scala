@@ -8,21 +8,19 @@ import pl.ayeo.warehouse.ItemActor._
 import pl.ayeo.warehouse.WarehouseActor.{ConfirmLocation, LocationConfirmation, UnknownLocation}
 
 sealed trait State {
-  def applyCommand(
-    implicit clusterSharding: ClusterSharding,
-    context: ActorContext[Command],
-    command: Command
-  ): Effect[Event, State]
+  def applyCommand
+      (context: ActorContext[ItemActor.Command], command: Command)
+      (implicit warehouseAccess: WarehouseID => EntityRef[WarehouseActor.Command])
+      : Effect[Event, State]
 
   def applyEvent(event: Event): State
 }
 
 final case object Uninitialized extends State {
-  override def applyCommand(
-     implicit clusterSharding: ClusterSharding,
-     context: ActorContext[Command],
-     command: Command
-   ): Effect[Event, State] = command match {
+  override def applyCommand
+     (context: ActorContext[ItemActor.Command], command: Command)
+     (implicit warehouseAccess: WarehouseID => EntityRef[WarehouseActor.Command])
+    : Effect[Event, State] = command match {
     case Create(warehouseID, sku, replyTo) =>
       val event = Created(warehouseID, sku)
       Effect.persist(event).thenReply(replyTo)(_ => event)
@@ -55,21 +53,19 @@ final case class Initialized(
     case StockUpdated(location, quantity) => addStock(location, quantity)
   }
 
-  override def applyCommand(
-   implicit clusterSharding: ClusterSharding, //todo: ugly sharding - hard to test
-   context: ActorContext[Command],
-   command: Command
- ): Effect[Event, State] = command match {
+  override def applyCommand
+    (context: ActorContext[ItemActor.Command], command: Command)
+    (implicit warehouseAccess: WarehouseID => EntityRef[WarehouseActor.Command])
+    : Effect[Event, State] = command match {
     case Get(replyTo) =>
       replyTo ! Some(Item(warehouseID, sku, 12, locations.toMap))
       Effect.none
     case AddStock(location, quantity, replyTo) => {
-      context.log.info("Add stock ")
       if (locations.contains(location)) {
         val event = StockUpdated(location, quantity);
         Effect.persist(event).thenRun(_ => replyTo ! event)
       } else {
-        val warehouse = WarehouseActor.entityRef(warehouseID)
+        val warehouse = warehouseAccess(warehouseID)
         context.spawn(addLocationProcess(location, quantity, warehouse, context.self, replyTo), "IAL")
         Effect.none
       }
